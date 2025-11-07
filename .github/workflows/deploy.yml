@@ -1,0 +1,71 @@
+name: Deploy to EC2  
+on:  
+  push:  
+    branches:  
+      - develop  
+
+env:
+  DEPLOY_PATH: /var/www/ec2-nest-cidi
+
+jobs:  
+  deploy:  
+    runs-on: ubuntu-latest  
+    steps:  
+      - name: code checkout 
+        uses: actions/checkout@v4  
+      - name: nodejs set up
+        uses: actions/setup-node@v2  
+        with:  
+          node-version: 18  
+      - name: deps installation  
+        run: npm install  
+
+      - name: build project
+        run: npm run build  
+
+      - name: check ssh connection  
+        uses: appleboy/ssh-action@master  
+        with:  
+          host: ${{ secrets.EC2_HOST }}  
+          username: ${{ secrets.EC2_USERNAME }}  
+          key: ${{ secrets.EC2_PRIVATE_KEY }}  
+          script: |  
+            echo "SSH connection successful"  
+            whoami  
+            
+      - name: create project dir  
+        uses: appleboy/ssh-action@master  
+        with:  
+          host: ${{ secrets.EC2_HOST }}  
+          username: ${{ secrets.EC2_USERNAME }}  
+          key: ${{ secrets.EC2_PRIVATE_KEY }}  
+          script: |  
+            sudo mkdir -p ${{ env.DEPLOY_PATH }}
+            sudo chown -R ${{ secrets.EC2_USERNAME }}:${{ secrets.EC2_USERNAME }} ${{ env.DEPLOY_PATH }}
+
+            
+      - name: deploy to EC2  
+        uses: appleboy/scp-action@master  
+        with:  
+          host: ${{ secrets.EC2_HOST }}  
+          username: ${{ secrets.EC2_USERNAME }}  
+          key: ${{ secrets.EC2_PRIVATE_KEY }}  
+          source: ".,!.git,!node_modules"  
+          target: ${{ env.DEPLOY_PATH }}
+          strip_components: 1  
+          overwrite: true  
+
+
+      - name: setup and run app 
+        uses: appleboy/ssh-action@master  
+        with:  
+          host: ${{ secrets.EC2_HOST }}  
+          username: ${{ secrets.EC2_USERNAME }}  
+          key: ${{ secrets.EC2_PRIVATE_KEY }}  
+          script: |  
+            export NVM_DIR="/home/${{ secrets.EC2_USERNAME }}/.nvm"  
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  
+            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  
+            cd ${{ env.DEPLOY_PATH }} 
+  
+            pm2 reload dist/main.js --name ec2-nest-cidi || pm2 start dist/main.js --name ec2-nest-cidi
