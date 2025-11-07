@@ -13,12 +13,14 @@ jobs:
     steps:
       - name: code checkout
         uses: actions/checkout@v4
+
       - name: nodejs set up
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: 18
+
       - name: deps installation
-        run: npm install
+        run: npm ci
 
       - name: build project
         run: npm run build
@@ -49,9 +51,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          source: '.,!.git,!node_modules'
+          source: 'dist/,package.json,package-lock.json'
           target: ${{ env.DEPLOY_PATH }}
-          strip_components: 1
           overwrite: true
 
       - name: setup and run app
@@ -63,7 +64,10 @@ jobs:
           script: |
             export NVM_DIR="/home/${{ secrets.EC2_USERNAME }}/.nvm"  
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  
-            [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  
-            cd ${{ env.DEPLOY_PATH }} 
+            cd ${{ env.DEPLOY_PATH }}
 
-            pm2 reload dist/main.js --name ec2-nest-cidi || pm2 start dist/main.js --name ec2-nest-cidi
+            npm ci --production
+
+            pm2 delete ec2-nest-cidi || true
+            pm2 start dist/main.js --name ec2-nest-cidi
+            pm2 save
